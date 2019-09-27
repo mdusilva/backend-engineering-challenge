@@ -74,16 +74,13 @@ def handler(delay, pub_queue, write_queue, window=1):
         next_time += (time.time() - next_time) // delay * delay + delay
 
 def writer(file_name, write_queue):
-    if file_name is not None:
-        with open(file_name, 'w+') if file_name is not None else none_context_manager() as o_file:
-            while True:
-                try:
-                    msg = json.loads(write_queue.get())
-                    print(str(msg), file=o_file, flush=True)
-                    # o_file.write(str(msg)+'\n')
-                    # o_file.flush()
-                except Exception as e:
-                    print("Error writing: %s" % e)
+    with open(file_name, 'w+') if file_name is not None else none_context_manager() as o_file:
+        while True:
+            try:
+                msg = json.loads(write_queue.get())
+                print(str(msg), file=o_file, flush=True)
+            except Exception as e:
+                print("Error writing: %s" % e)
 
 def main(in_file, out_file, delay, window):
     pub_queue = queue.Queue()
@@ -98,11 +95,11 @@ def main(in_file, out_file, delay, window):
         time.sleep(10)
 
 if __name__ == "__main__":
-    delay = 60
-    window = 600
+    delay = 60  #Hardcoded for now
     arg_parser = argparse.ArgumentParser(description="Reads events from a file stream and writes aggregated statistics to a file")
     arg_parser.add_argument('--input_file', required=True, help='Path to the input file', metavar='input file', dest='in_file')
     arg_parser.add_argument('--output_file', default=None, required=False, help='Path to the input file, if not given the output is sent to to stdout [default: None]', metavar='output file', dest='out_file')
-    arg_parser.add_argument('--window_size', default=1, required=False, help='Moving average window size in seconds, must be an integer >= 1, the default will be used otherwise [default: 1]', metavar='Window size', dest='window')
-    print(arg_parser.parse_args())
-    # main(f, out_file, delay, window)
+    arg_parser.add_argument('--window_size', default=1, required=False, help='Moving average window size in seconds, must be an integer >= 1, the default will be used otherwise [default: 1]', type=int, metavar='Window size', dest='window')
+    args = arg_parser.parse_args()
+    window = args.window if args.window > 0 else arg_parser.get_default('window')
+    main(args.in_file, args.out_file, delay, window)
