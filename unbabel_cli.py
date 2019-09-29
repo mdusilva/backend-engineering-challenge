@@ -144,7 +144,7 @@ def writer(file_name, write_queue):
     with open(file_name, 'w+') if file_name is not None else none_context_manager() as o_file:
         while True:
             try:
-                msg = json.loads(write_queue.get())
+                msg =write_queue.get()
                 print(str(msg), file=o_file, flush=True)
             except Exception as e:
                 print("Error writing: %s" % e)
