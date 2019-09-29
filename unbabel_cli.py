@@ -146,7 +146,17 @@ def writer(file_name, write_queue):
             except Exception as e:
                 print("Error writing: %s" % e)
 
-def main():
+def main(close_event=None):
+    """
+    Main function: launches the three required threads (publisher, handler and writer)
+
+    Parse required arguments from the command line
+
+    Parameters
+    ----------
+    close_event: threading.Event object, optional
+        Event which can be used to end the process from an outside controlling thread (default is None)
+    """
     in_file, out_file, delay, window = parse_arguments()
     pub_queue = queue.Queue()
     write_queue = queue.Queue()
@@ -156,8 +166,10 @@ def main():
     pub_thread.start()
     handler_thread.start()
     writer_thread.start()
-    while True:
-        time.sleep(10)
+    if close_event is None:
+        close_event = threading.Event()
+    while not close_event.is_set():
+        close_event.wait(10)
 
 def parse_arguments():
     """
