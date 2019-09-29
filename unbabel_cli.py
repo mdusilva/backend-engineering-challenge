@@ -12,7 +12,7 @@ def none_context_manager():
     """Dummy context manager, does nothing and returns None"""
     yield None
 
-def streamer(source):
+def streamer(source, close_event):
     """
     Generator yielding new lines from a file object
 
@@ -24,14 +24,15 @@ def streamer(source):
     ----------
     source: file object
         Source file, must have a readline() method
-
+    close_event: threading.Event object
+        Event which can be used to end the thread from an outside controlling thread
     Yields
     ------
     new_line: dict
         Dictionary corresponding to a line
     """
     new_line = ''
-    while True:
+    while not close_event.is_set():
         line = source.readline()
         if not line:
             time.sleep(0.001)
@@ -41,7 +42,7 @@ def streamer(source):
                 yield json.loads(new_line)
                 new_line = ''
 
-def publisher(file_name, pub_queue, window=1, timeout=30):
+def publisher(file_name, pub_queue, close_event, window=1, timeout=30):
     """
     Reads lines from a streaming file and puts them in a queue for further processing
 
@@ -51,6 +52,8 @@ def publisher(file_name, pub_queue, window=1, timeout=30):
         Path of file to be streamed
     pub_queue: queue.Queue object
         Queue to put new lines
+    close_event: threading.Event object
+        Event which can be used to end the thread from an outside controlling thread
     window: int, optional
         Size of censoring window in seconds (default is 1), lines with timestamps
         older than this values will be ignored
@@ -58,8 +61,11 @@ def publisher(file_name, pub_queue, window=1, timeout=30):
         Timeout for putting items in the queue in seconds (default is 30)
     """
     with open(file_name, 'r') as in_file:
-        for l in streamer(in_file):
+        streaming_generator = streamer(in_file, close_event)
+        while not close_event.is_set():
+        # for l in streamer(in_file):
             try:
+                l = next(streaming_generator)
                 now = time.time()
                 dt = l.get('timestamp')
                 #Timestamps older than window value are ignored
@@ -69,7 +75,7 @@ def publisher(file_name, pub_queue, window=1, timeout=30):
             except Exception as e:
                 print("Error publishing: %s" % e)
 
-def handler(delay, pub_queue, write_queue, window=1):
+def handler(delay, pub_queue, write_queue, close_event, window=1):
     """
     Receives dictionaries from a queue, containing at a minimum a 'timestamp' key, 
     computes a moving average of the value given by the 'duration' key (if it exists) 
@@ -87,6 +93,8 @@ def handler(delay, pub_queue, write_queue, window=1):
         new dictionaries are obtained from this queue
     write_queue: queue.Queue object
         put computed moving average and and respective timestamp in this queue
+    close_event: threading.Event object
+        Event which can be used to end the thread from an outside controlling thread
     window: int or float, optional
         Moving average window in seconds (default is 1)
     """
@@ -97,7 +105,7 @@ def handler(delay, pub_queue, write_queue, window=1):
         next_time = next_time.timestamp()
     messages = []
     print("Next time ", datetime.datetime.fromtimestamp(next_time))
-    while True:
+    while not close_event.is_set():
         sleeping_time = next_time - time.time()
         print ("Sleeping for %s seconds..." % sleeping_time)
         time.sleep(max(0, sleeping_time))
@@ -130,7 +138,7 @@ def handler(delay, pub_queue, write_queue, window=1):
         #next time is adjusted to avoid drifting and to jump multiples of delay if processing took to long
         next_time += (time.time() - next_time) // delay * delay + delay
 
-def writer(file_name, write_queue):
+def writer(file_name, write_queue, close_event):
     """
     Receive dictionaries from a queue and write them to a file or the stdout
 
@@ -139,10 +147,12 @@ def writer(file_name, write_queue):
     file_name: str or None
         Path of output file. If None, the stdout will be used instead
     write_queue: queue.Queue object
-        receive dictionaries from this queue  
+        receive dictionaries from this queue
+    close_event: threading.Event object
+        Event which can be used to end the thread from an outside controlling thread
     """
     with open(file_name, 'w+') if file_name is not None else none_context_manager() as o_file:
-        while True:
+        while not close_event.is_set():
             try:
                 msg =write_queue.get()
                 print(str(msg), file=o_file, flush=True)
@@ -160,7 +170,7 @@ def main(args, close_event=None):
     args: list of str
         list of arguments: input file (mandatory), output file, delay and window
     close_event: threading.Event object, optional
-        Event which can be used to end the process from an outside controlling thread (default is None)
+        Event which can be used to end the thread from an outside controlling thread (default is None)
     """
     try:
         in_file, out_file, delay, window = parse_arguments(args)
@@ -169,16 +179,19 @@ def main(args, close_event=None):
         raise
     pub_queue = queue.Queue()
     write_queue = queue.Queue()
-    pub_thread = threading.Thread(target=publisher, args=(in_file, pub_queue), kwargs={'window': window}, daemon=True)
-    handler_thread = threading.Thread(target=handler, args=(delay, pub_queue, write_queue), kwargs={'window': window}, daemon=True)
-    writer_thread = threading.Thread(target=writer, args=(out_file, write_queue), daemon=True)
+    if close_event is None:
+        close_event = threading.Event()
+    pub_thread = threading.Thread(target=publisher, args=(in_file, pub_queue, close_event), kwargs={'window': window}, daemon=True)
+    handler_thread = threading.Thread(target=handler, args=(delay, pub_queue, write_queue, close_event), kwargs={'window': window}, daemon=True)
+    writer_thread = threading.Thread(target=writer, args=(out_file, write_queue, close_event), daemon=True)
     pub_thread.start()
     handler_thread.start()
     writer_thread.start()
-    if close_event is None:
-        close_event = threading.Event()
     while not close_event.is_set():
         close_event.wait(10)
+    writer_thread.join()
+    pub_thread.join()
+    handler_thread.join()
 
 def parse_arguments(cl_args):
     """
