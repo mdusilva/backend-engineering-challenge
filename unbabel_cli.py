@@ -5,6 +5,7 @@ import queue
 import threading
 import argparse
 import contextlib
+import sys
 
 @contextlib.contextmanager
 def none_context_manager():
@@ -107,6 +108,8 @@ def handler(delay, pub_queue, write_queue, window=1):
                 messages.append(pub_queue.get(block=False))
             #Where the magic happens: filter all current messages to have only the ones within the window
             #then grab the durations, note that a duration of zero is assumed if the key is not found
+            #It is assumed that the event name is always "translation_delivered", but this would be the 
+            # place to filter by event_name if required
             messages = [x for x in messages if now - \
                 datetime.datetime.strptime(x.get('timestamp'), '%Y-%m-%d %H:%M:%S.%f').timestamp() < window]
             durations = [x.get('duration') for x in messages if x.get('duration') is not None]
@@ -117,8 +120,8 @@ def handler(delay, pub_queue, write_queue, window=1):
                 average = None
             msg = json.dumps(
                 {
-                    'date': datetime.datetime.fromtimestamp(now).isoformat(' '), 
-                    'average_delivery_time': average
+                    "date": datetime.datetime.fromtimestamp(now).isoformat(' '), 
+                    "average_delivery_time": average
                     }
             )
             write_queue.put(msg)
@@ -146,7 +149,7 @@ def writer(file_name, write_queue):
             except Exception as e:
                 print("Error writing: %s" % e)
 
-def main(close_event=None):
+def main(args, close_event=None):
     """
     Main function: launches the three required threads (publisher, handler and writer)
 
@@ -154,10 +157,16 @@ def main(close_event=None):
 
     Parameters
     ----------
+    args: list of str
+        list of arguments: input file (mandatory), output file, delay and window
     close_event: threading.Event object, optional
         Event which can be used to end the process from an outside controlling thread (default is None)
     """
-    in_file, out_file, delay, window = parse_arguments()
+    try:
+        in_file, out_file, delay, window = parse_arguments(args)
+    except Exception as e:
+        print ("Could not obtain arguments: %s" % e)
+        raise
     pub_queue = queue.Queue()
     write_queue = queue.Queue()
     pub_thread = threading.Thread(target=publisher, args=(in_file, pub_queue), kwargs={'window': window}, daemon=True)
@@ -171,11 +180,16 @@ def main(close_event=None):
     while not close_event.is_set():
         close_event.wait(10)
 
-def parse_arguments():
+def parse_arguments(cl_args):
     """
     Parse arguments from the command line
 
     Possible arguments are input_file (mandatory), output_file, delay and window
+
+    Parameters
+    ---------
+    cl_args: list of str
+        command line arguments
 
     Returns
     -------
@@ -187,10 +201,10 @@ def parse_arguments():
     arg_parser.add_argument('--output_file', default=None, required=False, help='Path to the input file, if not given the output is sent to to stdout [default: None]', metavar='output file', dest='out_file')
     arg_parser.add_argument('--window_size', default=1, required=False, help='Moving average window size in seconds, must be an integer >= 1, the default will be used otherwise [default: 1]', type=int, metavar='Window size', dest='window')
     arg_parser.add_argument('--frequency', default=60, required=False, help='Frequency of moving average calculation in seconds, must be an integer >=1 [default: 60]', type=int, metavar='Frequency', dest='frequency')
-    args = arg_parser.parse_args()
+    args = arg_parser.parse_args(cl_args)
     window = args.window if args.window > 0 else arg_parser.get_default('window')
     frequency = args.frequency if args.frequency > 0 else arg_parser.get_default('frequency')
     return args.in_file, args.out_file, frequency, window
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
