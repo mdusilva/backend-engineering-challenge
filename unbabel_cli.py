@@ -94,6 +94,8 @@ def handler(delay, pub_queue, write_queue, window=1):
     next_time = datetime.datetime.now() + datetime.timedelta(seconds=delay)
     if delay >= 60:
         next_time = next_time.replace(microsecond=0, second=0).timestamp()
+    else:
+        next_time = next_time.timestamp()
     messages = []
     print("Next time ", datetime.datetime.fromtimestamp(next_time))
     while True:
