@@ -31,10 +31,8 @@ def streamer(source):
     """
     new_line = ''
     while True:
-        # where = in_file.tell()
         line = source.readline()
         if not line:
-            # in_file.seek(where)
             time.sleep(0.001)
         else:
             new_line += line
@@ -105,7 +103,6 @@ def handler(delay, pub_queue, write_queue, window=1):
         print("Finished sleeping")
         try:
             now = time.time()
-            # now = datetime.datetime.strptime("2018-12-26 18:24:00", '%Y-%m-%d %H:%M:%S').timestamp()
             while not pub_queue.empty():
                 messages.append(pub_queue.get(block=False))
             #Where the magic happens: filter all current messages to have only the ones within the window
