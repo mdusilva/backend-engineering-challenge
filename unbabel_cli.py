@@ -1,3 +1,12 @@
+"""
+### Unbabel streaming application
+
+This application streams translation events from a file, in json format, and outputs the moving average 
+of the translation duration.
+
+We only consider events with type "translation_delivered" but there's no check for event name at 
+the moment.
+"""
 import time
 import datetime
 import json
@@ -132,7 +141,7 @@ def handler(delay, pub_queue, write_queue, close_event, window=1):
                     "average_delivery_time": average
                     }
             )
-            write_queue.put(msg)
+            write_queue.put(msg, timeout=window)
         except Exception as e:
             print("Error handling: %s" % e)
         #next time is adjusted to avoid drifting and to jump multiples of delay if processing took to long
@@ -154,8 +163,10 @@ def writer(file_name, write_queue, close_event):
     with open(file_name, 'w+') if file_name is not None else none_context_manager() as o_file:
         while not close_event.is_set():
             try:
-                msg =write_queue.get()
+                msg =write_queue.get(timeout=0.1)
                 print(str(msg), file=o_file, flush=True)
+            except queue.Empty:
+                pass
             except Exception as e:
                 print("Error writing: %s" % e)
 
