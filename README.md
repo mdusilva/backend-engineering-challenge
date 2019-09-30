@@ -1,3 +1,24 @@
+# My solution
+
+My solution consists in a multi-threaded code implementing a producer-consumer pattern. There is a thread continuously reading an input file (could be a stream), a thread handling the data, in this case computing the moving average, and a writting thread to write the result to an output file. Events in the input file that are older than the moving average window are ignored.
+
+I wrote the code in Python 3.6.5 and it's only been tested in this version, but it shoud work in other versions of Python 3. It does not have any external dependency, as it only uses the standard library. I suggest the use of a virtualenv (https://virtualenv.pypa.io/en/latest/) with the 3.6.5 version, or other similar method (for example anaconda's virtual envs: https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/environments.html).
+
+## Running
+To run the application according to the specifications go to the source directory and type:
+
+```
+python unbabel_cli.py --input_file events.json --window_size 600 --output_file out.json --frequency 60
+```
+
+to stream from the file events.json and write the output to the file out.json. The window size and the frequency are given in seconds.
+
+To run the tests type:
+
+```
+python test_unbabel_cli.py
+```
+
 # Backend Engineering Challenge
 
 
